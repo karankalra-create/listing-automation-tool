@@ -474,34 +474,25 @@ def generate_noon(skus, rap_index, model_index, img_index, template_bytes):
     wb.save(buf)
     return buf.getvalue()
 
-# ─── Auto-load RAP sheet and images from bundled files ────────────────────────
-import os, pathlib
-
-BASE_DIR = pathlib.Path(__file__).parent
-RAP_PATH = BASE_DIR / "rap_sheet.xlsx"
-IMG_PATH = BASE_DIR / "eyewa_images.csv"
-
-@st.cache_data(show_spinner="Loading RAP sheet…")
-def load_rap_from_file():
-    with open(RAP_PATH, "rb") as f:
-        return load_rap(f.read())
-
-@st.cache_data(show_spinner="Loading images…")
-def load_images_from_file():
-    with open(IMG_PATH, "rb") as f:
-        return load_images(f.read())
 
 # ─── UI ────────────────────────────────────────────────────────────────────────
 with st.sidebar:
+    st.header("📁 Upload Files")
+    st.caption("Upload once per session — files are cached automatically.")
+
+    rap_file = st.file_uploader("RAP Sheet (.xlsx)", type=["xlsx"], key="rap")
+    img_file = st.file_uploader("Eyewa Images (.csv)", type=["csv"], key="img")
+
+    # Show cached status
+    if "rap_cached" in st.session_state:
+        st.success("✅ RAP sheet ready")
+    if "img_cached" in st.session_state:
+        st.success("✅ Images ready")
+
+    st.divider()
     st.header("📋 Templates")
     ty_template = st.file_uploader("Trendyol Template (.xlsx)", type=["xlsx"], key="ty_tmpl")
     noon_template = st.file_uploader("Noon Template (.xlsx)", type=["xlsx"], key="noon_tmpl")
-    st.divider()
-    # Show data file status
-    rap_ok = RAP_PATH.exists()
-    img_ok = IMG_PATH.exists()
-    st.caption(f"{'✅' if rap_ok else '❌'} RAP sheet {'loaded' if rap_ok else 'missing'}")
-    st.caption(f"{'✅' if img_ok else '❌'} Images {'loaded' if img_ok else 'missing'}")
 
 col1, col2 = st.columns([2, 1])
 
@@ -534,17 +525,25 @@ if generate_btn:
         st.error("No valid SKUs found. Make sure each line starts with a SKU (e.g. sw...).")
         st.stop()
 
-    if not RAP_PATH.exists():
-        st.error("rap_sheet.xlsx not found in app folder. Please add it to GitHub.")
+    # Cache uploaded files in session state so re-runs don't need re-upload
+    if rap_file:
+        rap_file.seek(0)
+        st.session_state["rap_bytes"] = rap_file.read()
+        st.session_state["rap_cached"] = True
+    if img_file:
+        img_file.seek(0)
+        st.session_state["img_bytes"] = img_file.read()
+        st.session_state["img_cached"] = True
+
+    if "rap_bytes" not in st.session_state:
+        st.error("Please upload the RAP Sheet in the sidebar.")
+        st.stop()
+    if "img_bytes" not in st.session_state:
+        st.error("Please upload the Eyewa Images CSV in the sidebar.")
         st.stop()
 
-    if not IMG_PATH.exists():
-        st.error("eyewa_images.csv not found in app folder. Please add it to GitHub.")
-        st.stop()
-
-    # Load data from bundled files
-    rap_index, model_index = load_rap_from_file()
-    img_index = load_images_from_file()
+    rap_index, model_index = load_rap(st.session_state["rap_bytes"])
+    img_index = load_images(st.session_state["img_bytes"])
 
     # Stats
     no_rap = [s for s in skus if get_rap(s, rap_index, model_index) is None]
